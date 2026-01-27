@@ -1,0 +1,99 @@
+name: Build macOS App
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+    - name: Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: src-tauri
+
+    - name: Install system dependencies
+      run: |
+        brew install ffmpeg
+
+    - name: Install npm dependencies
+      run: npm ci
+
+    - name: Download Whisper model (tiny for CI)
+      run: |
+        mkdir -p ~/.transcribe/models
+        curl -L -o ~/.transcribe/models/ggml-tiny.bin \
+          https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+
+    - name: Build frontend
+      run: npm run build
+
+    - name: Build Tauri app (Universal Binary)
+      run: npm run tauri build -- --target universal-apple-darwin
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: List build artifacts
+      run: |
+        ls -la src-tauri/target/universal-apple-darwin/release/bundle/dmg/ || true
+        ls -la src-tauri/target/universal-apple-darwin/release/bundle/macos/ || true
+
+    - name: Upload DMG artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TranscribeApp-macos-universal
+        path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+        if-no-files-found: warn
+
+    - name: Upload App Bundle artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TranscribeApp-macos-app
+        path: src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+        if-no-files-found: warn
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: TranscribeApp-macos-universal
+        path: artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: artifacts/*.dmg
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
