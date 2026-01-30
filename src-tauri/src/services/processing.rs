@@ -43,6 +43,7 @@ impl ProcessingService {
         app: AppHandle,
         file_path: PathBuf,
         job_id: String,
+        mut cancel_rx: oneshot::Receiver<()>,
     ) -> Result<i64> {
         let file_name = file_path
             .file_stem()
@@ -58,7 +59,18 @@ impl ProcessingService {
         let language = settings.default_language;
 
         // Update job status
-        self.update_job_status(&job_id, JobStatus::Processing);
+        Self::update_job_status(&job_id, JobStatus::Processing);
+
+        // Check cancellation helper
+        macro_rules! check_cancel {
+            ($rx:expr) => {
+                if $rx.try_recv().is_ok() {
+                    app_log!(info, "Processing cancelled by user");
+                    Self::update_job_status(&job_id, JobStatus::Failed);
+                    anyhow::bail!("Processing cancelled by user");
+                }
+            };
+        }
 
         // Step 1: Extract audio
         self.emit_progress(&app, &job_id, ProcessingStage::Extracting, 0.0, 30.0);
@@ -73,6 +85,8 @@ impl ProcessingService {
         self.emit_progress(&app, &job_id, ProcessingStage::Extracting, 100.0, 0.0);
         app_log!(info, &format!("Audio extracted, duration: {:.1}s", duration));
 
+        check_cancel!(cancel_rx);
+
         // Step 2: Transcribe
         self.emit_progress(&app, &job_id, ProcessingStage::Transcribing, 0.0, duration * 0.5);
         app_log!(info, &format!("Starting transcription with model: {}", model));
@@ -81,25 +95,28 @@ impl ProcessingService {
             .context("Transcription failed")?;
 
         self.emit_progress(&app, &job_id, ProcessingStage::Transcribing, 100.0, 0.0);
-        app_log!(info, "Transcription completed");
+        app_log!(info, &format!("Transcription completed: {} segments", transcription_result.segments.len()));
+
+        check_cancel!(cancel_rx);
 
         // Step 3: Diarization (if enabled)
-        let final_segments = transcription_result.segments;
+        let mut diarization_result = None;
 
         if settings.auto_diarization {
             self.emit_progress(&app, &job_id, ProcessingStage::Diarizing, 0.0, duration * 0.3);
             app_log!(info, "Starting speaker diarization...");
 
-            let diarization_result = self.diarization.diarize(
-                &audio_path,
-                settings.manual_speaker_count,
-            )?;
-
-            app_log!(info, &format!("Found {} speakers", diarization_result.speakers.len()));
+            match self.diarization.diarize(&audio_path, settings.manual_speaker_count) {
+                Ok(result) => {
+                    app_log!(info, &format!("Diarization completed: {} speakers, {} segments",
+                        result.speakers.len(), result.segments.len()));
+                    diarization_result = Some(result);
+                }
+                Err(e) => {
+                    app_log!(warn, &format!("Diarization failed, continuing without speakers: {}", e));
+                }
+            }
             self.emit_progress(&app, &job_id, ProcessingStage::Diarizing, 100.0, 0.0);
-
-            // Save speakers (we'll get their IDs after insertion)
-            // For now, we need to create the transcription first, then speakers
         }
 
         // Cleanup temp audio file
@@ -120,32 +137,44 @@ impl ProcessingService {
         let transcription_id = insert_transcription(&new_transcription)
             .context("Failed to save transcription")?;
 
-        // If diarization was done, run it again and save speakers/segments
-        if settings.auto_diarization {
-            // Re-run diarization to get speaker info (or use cached result)
-            // For MVP, we'll create default speakers
-            let default_speaker = NewSpeaker {
-                speaker_label: "SPEAKER_00".to_string(),
-                display_name: "Спикер 1".to_string(),
-                color: "#3B82F6".to_string(),
-            };
-            let speaker_id = insert_speaker(transcription_id, &default_speaker)?;
+        // Save speakers and segments
+        if let Some(ref diar) = diarization_result {
+            if !diar.speakers.is_empty() {
+                // Insert all speakers and collect their DB IDs
+                let mut speaker_ids: Vec<i64> = Vec::new();
+                for speaker_data in &diar.speakers {
+                    let speaker_id = insert_speaker(transcription_id, speaker_data)?;
+                    speaker_ids.push(speaker_id);
+                }
 
-            // Save segments with speaker
-            for segment in &final_segments {
-                let mut seg = segment.clone();
-                seg.speaker_id = Some(speaker_id);
-                insert_segment(transcription_id, &seg)?;
+                // Use diarization service to merge transcription segments with speaker info
+                let merged_segments = self.diarization.merge_segments(
+                    transcription_result.segments.clone(),
+                    diar,
+                    &speaker_ids,
+                );
+
+                for segment in &merged_segments {
+                    insert_segment(transcription_id, segment)?;
+                }
+
+                app_log!(info, &format!("Saved {} speakers and {} segments",
+                    speaker_ids.len(), merged_segments.len()));
+            } else {
+                // Diarization returned no speakers - save segments without speaker
+                for segment in &transcription_result.segments {
+                    insert_segment(transcription_id, segment)?;
+                }
             }
         } else {
-            // Save segments without speaker
-            for segment in &final_segments {
+            // No diarization - save segments without speaker
+            for segment in &transcription_result.segments {
                 insert_segment(transcription_id, segment)?;
             }
         }
 
         // Update job status
-        self.update_job_status(&job_id, JobStatus::Completed);
+        Self::update_job_status(&job_id, JobStatus::Completed);
 
         // Emit completion event
         let complete_event = TranscriptionCompleteEvent {
@@ -179,7 +208,7 @@ impl ProcessingService {
         }
     }
 
-    fn update_job_status(&self, job_id: &str, status: JobStatus) {
+    fn update_job_status(job_id: &str, status: JobStatus) {
         if let Ok(mut jobs) = JOBS.lock() {
             if let Some(job) = jobs.get_mut(job_id) {
                 job.status = status;
@@ -189,9 +218,10 @@ impl ProcessingService {
 
     pub fn cancel_job(job_id: &str) -> bool {
         if let Ok(mut jobs) = JOBS.lock() {
-            if let Some(job) = jobs.remove(job_id) {
-                if let Some(tx) = job.cancel_tx {
+            if let Some(job) = jobs.get_mut(job_id) {
+                if let Some(tx) = job.cancel_tx.take() {
                     let _ = tx.send(());
+                    job.status = JobStatus::Failed;
                     return true;
                 }
             }
@@ -217,11 +247,13 @@ pub fn generate_job_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-/// Create a new job and register it
-pub fn create_job(job_id: String) {
+/// Create a new job and register it, returning a cancel receiver
+pub fn create_job(job_id: String) -> oneshot::Receiver<()> {
+    let (cancel_tx, cancel_rx) = oneshot::channel();
     let mut jobs = JOBS.lock().unwrap();
     jobs.insert(job_id, JobHandle {
-        cancel_tx: None,
+        cancel_tx: Some(cancel_tx),
         status: JobStatus::Pending,
     });
+    cancel_rx
 }

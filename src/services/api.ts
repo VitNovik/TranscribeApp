@@ -90,7 +90,5 @@ export async function getProcessingStatus(jobId: string): Promise<TranscriptionJ
   return invoke('get_processing_status', { jobId });
 }
 
-// File dialog
-export async function selectFile(): Promise<string | null> {
-  return invoke('select_file');
-}
+// Note: File dialog is handled via @tauri-apps/plugin-dialog (open() function)
+// No backend command needed for file selection

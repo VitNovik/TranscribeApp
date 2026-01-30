@@ -8,8 +8,9 @@ use tracing_subscriber::{
     util::SubscriberInitExt,
     EnvFilter,
 };
+use tracing_appender::rolling;
 
-use crate::database::repository::insert_log;
+use crate::database::repository::{insert_log, get_app_data_dir};
 use crate::models::{LogLevel, LogEntryEvent};
 
 static APP_HANDLE: Lazy<Mutex<Option<AppHandle>>> = Lazy::new(|| Mutex::new(None));
@@ -18,9 +19,30 @@ pub fn init_logger() {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,transcribe_app=debug"));
 
+    // Setup file appender with daily rotation
+    let log_dir = get_app_data_dir()
+        .map(|d| d.join("logs"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/transcribe-app-logs"));
+
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let file_appender = rolling::daily(&log_dir, "app.log");
+    let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Leak the guard so it lives for the duration of the program
+    // This is intentional - we want logging to work until process exit
+    std::mem::forget(_guard);
+
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_target(true).with_line_number(true))
+        .with(
+            fmt::layer()
+                .with_target(true)
+                .with_line_number(true)
+                .with_ansi(false)
+                .with_writer(file_writer)
+        )
         .init();
 
     info!("Logger initialized");
@@ -33,7 +55,7 @@ pub fn set_app_handle(handle: AppHandle) {
 
 /// Log a message and emit to frontend
 pub fn log_and_emit(level: LogLevel, message: &str, context: Option<serde_json::Value>) {
-    // Log to tracing
+    // Log to tracing (goes to both console and file)
     match level {
         LogLevel::Debug => debug!("{}", message),
         LogLevel::Info => info!("{}", message),

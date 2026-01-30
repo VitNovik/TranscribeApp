@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{debug, info, error};
 
+use crate::app_log;
 use crate::database::get_app_data_dir;
 
 pub struct FFmpegService;
@@ -20,28 +20,32 @@ impl FFmpegService {
         let output_filename = format!("{}.wav", uuid::Uuid::new_v4());
         let output_path = temp_dir.join(&output_filename);
 
-        info!("Extracting audio from {:?} to {:?}", input_path, output_path);
+        app_log!(info, &format!("FFmpeg: extracting audio from {:?}", input_path));
+
+        let ffmpeg_args = [
+            "-i", input_path.to_str().unwrap(),
+            "-vn",                    // No video
+            "-acodec", "pcm_s16le",   // 16-bit PCM
+            "-ar", "16000",           // 16kHz sample rate (required by Whisper)
+            "-ac", "1",               // Mono
+            "-y",                     // Overwrite output
+            output_path.to_str().unwrap(),
+        ];
+
+        app_log!(debug, &format!("FFmpeg command: ffmpeg {}", ffmpeg_args.join(" ")));
 
         let output = Command::new("ffmpeg")
-            .args([
-                "-i", input_path.to_str().unwrap(),
-                "-vn",                    // No video
-                "-acodec", "pcm_s16le",   // 16-bit PCM
-                "-ar", "16000",           // 16kHz sample rate (required by Whisper)
-                "-ac", "1",               // Mono
-                "-y",                     // Overwrite output
-                output_path.to_str().unwrap(),
-            ])
+            .args(&ffmpeg_args)
             .output()
-            .context("Failed to execute FFmpeg")?;
+            .context("Failed to execute FFmpeg. Is FFmpeg installed?")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("FFmpeg error: {}", stderr);
+            app_log!(error, &format!("FFmpeg error: {}", stderr));
             anyhow::bail!("FFmpeg failed: {}", stderr);
         }
 
-        debug!("Audio extraction completed successfully");
+        app_log!(debug, "FFmpeg: audio extraction completed successfully");
         Ok(output_path)
     }
 
@@ -66,7 +70,7 @@ impl FFmpegService {
         let duration: f64 = duration_str.trim().parse()
             .context("Failed to parse duration")?;
 
-        debug!("Media duration: {} seconds", duration);
+        app_log!(debug, &format!("FFprobe: media duration = {:.1}s", duration));
         Ok(duration)
     }
 
@@ -83,7 +87,7 @@ impl FFmpegService {
     pub fn cleanup_temp_file(&self, path: &Path) -> Result<()> {
         if path.exists() {
             std::fs::remove_file(path)?;
-            debug!("Cleaned up temp file: {:?}", path);
+            app_log!(debug, &format!("Cleaned up temp file: {:?}", path));
         }
         Ok(())
     }

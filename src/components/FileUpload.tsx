@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Upload, FileAudio, FileVideo, X } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AUDIO_FORMATS, VIDEO_FORMATS, SUPPORTED_FORMATS } from '@/types';
 import { getFileName, getFileExtension } from '@/lib/utils';
 
@@ -12,6 +13,35 @@ interface FileUploadProps {
 export function FileUpload({ onFileSelect, onClose }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  // Listen for Tauri drag-and-drop events (provides real file paths)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    getCurrentWindow().onDragDropEvent((event) => {
+      if (event.payload.type === 'over') {
+        setIsDragging(true);
+      } else if (event.payload.type === 'drop') {
+        setIsDragging(false);
+        const paths = event.payload.paths;
+        if (paths.length > 0) {
+          const filePath = paths[0];
+          const ext = getFileExtension(filePath);
+          if (SUPPORTED_FORMATS.includes(ext as typeof SUPPORTED_FORMATS[number])) {
+            setSelectedFile(filePath);
+          }
+        }
+      } else if (event.payload.type === 'leave') {
+        setIsDragging(false);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   const handleSelectFile = async () => {
     try {
@@ -43,28 +73,6 @@ export function FileUpload({ onFileSelect, onClose }: FileUploadProps) {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      const file = files[0];
-      const ext = getFileExtension(file.name);
-      if (SUPPORTED_FORMATS.includes(ext as typeof SUPPORTED_FORMATS[number])) {
-        // Note: In Tauri, we need the actual file path, not the File object
-        // This is a limitation of drag-and-drop in Tauri
-        console.log('File dropped:', file.name);
-      }
-    }
   }, []);
 
   const handleStart = () => {
@@ -124,11 +132,9 @@ export function FileUpload({ onFileSelect, onClose }: FileUploadProps) {
           <div
             onClick={handleSelectFile}
             onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
             className={`
               border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors
-              ${isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground'}
+              ${isDragging ? 'border-primary dropzone-active' : 'border-border hover:border-muted-foreground'}
             `}
           >
             <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />

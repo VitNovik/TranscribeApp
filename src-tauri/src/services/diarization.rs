@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
-use tracing::{info, warn};
+
+use crate::app_log;
 
 use crate::models::{NewSpeaker, NewSegment};
 use crate::models::speaker::{get_speaker_color, generate_speaker_name};
@@ -19,16 +20,16 @@ impl DiarizationService {
         audio_path: &Path,
         num_speakers: Option<i32>,
     ) -> Result<DiarizationResult> {
-        info!("Starting diarization for {:?}", audio_path);
+        app_log!(info, &format!("Pyannote: starting diarization for {:?}", audio_path));
 
         // Try to run pyannote diarization via Python
         match self.run_pyannote_diarization(audio_path, num_speakers) {
             Ok(result) => {
-                info!("Diarization completed: {} speakers found", result.speakers.len());
+                app_log!(info, &format!("Pyannote: diarization completed, {} speakers found", result.speakers.len()));
                 return Ok(result);
             }
             Err(e) => {
-                warn!("Pyannote diarization failed: {}, falling back to single speaker", e);
+                app_log!(warn, &format!("Pyannote diarization failed: {}, falling back to single speaker", e));
             }
         }
 

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tracing::{info, warn};
 
+use crate::app_log;
 use crate::database::get_app_data_dir;
 use crate::models::{WhisperModel, NewSegment};
 
@@ -52,7 +52,7 @@ impl WhisperService {
         );
         let model_path = self.model_path(model);
 
-        info!("Downloading model {} from {}", model.as_str(), model_url);
+        app_log!(info, &format!("Downloading model {} from {}", model.as_str(), model_url));
 
         // Use curl to download (available on macOS by default)
         let output = Command::new("curl")
@@ -70,7 +70,7 @@ impl WhisperService {
             anyhow::bail!("Failed to download model: {}", stderr);
         }
 
-        info!("Model {} downloaded successfully", model.as_str());
+        app_log!(info, &format!("Model {} downloaded successfully", model.as_str()));
         Ok(())
     }
 
@@ -82,7 +82,7 @@ impl WhisperService {
         model: &WhisperModel,
         language: &str,
     ) -> Result<TranscriptionResult> {
-        info!("Starting transcription with model {} for language {}", model.as_str(), language);
+        app_log!(info, &format!("Whisper: starting transcription with model {} for language {}", model.as_str(), language));
 
         // For MVP, we'll simulate transcription result
         // In production, this would call whisper.cpp or whisper Python
@@ -98,7 +98,7 @@ impl WhisperService {
         }
 
         // If no whisper available, return a placeholder result for testing
-        warn!("No Whisper implementation found, returning placeholder result");
+        app_log!(warn, "No Whisper implementation found, returning placeholder result");
         Ok(TranscriptionResult {
             text: "[Транскрибация недоступна - установите whisper.cpp или whisper Python]".to_string(),
             segments: vec![NewSegment {

@@ -77,7 +77,7 @@ function SpeakerItem({ speaker, onUpdateName }: SpeakerItemProps) {
   };
 
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+    <div className="group flex items-center gap-2 p-2 rounded-lg bg-muted/50">
       <span
         className="speaker-dot flex-shrink-0"
         style={{ backgroundColor: speaker.color }}

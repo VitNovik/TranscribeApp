@@ -1,8 +1,10 @@
-import { ArrowLeft, Download, Trash2, Loader2, Clock, Calendar, FileAudio, Globe, Cpu } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Download, Trash2, Loader2, Clock, Calendar, FileAudio, Globe, Cpu, ChevronDown } from 'lucide-react';
 import { useTranscription } from '@/hooks/useTranscriptions';
 import { useSegmentsWithSpeakers } from '@/hooks/useSpeakers';
 import { SpeakersPanel } from './SpeakersPanel';
 import { formatTimestamp, formatDuration, formatDate, formatTime, getFileName } from '@/lib/utils';
+import * as api from '@/services/api';
 import type { SegmentWithSpeaker } from '@/types';
 
 interface TranscriptionViewProps {
@@ -20,9 +22,20 @@ export function TranscriptionView({ transcriptionId, onBack, onDelete }: Transcr
     updateSpeakerName,
   } = useSegmentsWithSpeakers(transcriptionId);
 
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
   const handleExport = async (format: string) => {
-    // TODO: Implement export
-    console.log('Export as:', format);
+    setShowExportMenu(false);
+    try {
+      setExporting(true);
+      const filePath = await api.exportTranscription(transcriptionId, format);
+      console.log('Exported to:', filePath);
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) {
@@ -61,13 +74,44 @@ export function TranscriptionView({ transcriptionId, onBack, onDelete }: Transcr
           <h1 className="text-xl font-semibold">{transcription.title}</h1>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => handleExport('txt')}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            <span>Экспорт</span>
-          </button>
+          {/* Export dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={exporting}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors"
+            >
+              {exporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>Экспорт</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-card rounded-lg shadow-lg border border-border z-10">
+                <button
+                  onClick={() => handleExport('txt')}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors rounded-t-lg"
+                >
+                  Текст (.txt)
+                </button>
+                <button
+                  onClick={() => handleExport('srt')}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
+                >
+                  Субтитры (.srt)
+                </button>
+                <button
+                  onClick={() => handleExport('json')}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors rounded-b-lg"
+                >
+                  JSON (.json)
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={onDelete}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"

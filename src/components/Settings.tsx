@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Download, Loader2, Check, HardDrive } from 'lucide-react';
 import { useSettings, useAvailableModels } from '@/hooks/useSettings';
 import type { WhisperModel, Settings as SettingsType } from '@/types';
@@ -21,6 +21,13 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   const { settings, loading, saving, updateSettings } = useSettings();
   const { models: availableModels, downloading, downloadModel } = useAvailableModels();
   const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
+
+  // Sync localSettings when settings are loaded from backend
+  useEffect(() => {
+    if (!loading) {
+      setLocalSettings(settings);
+    }
+  }, [settings, loading]);
 
   if (!isOpen) return null;
 

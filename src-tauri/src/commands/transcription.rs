@@ -19,7 +19,7 @@ pub async fn upload_file(
     }
 
     let job_id = generate_job_id();
-    create_job(job_id.clone());
+    let cancel_rx = create_job(job_id.clone());
 
     app_log!(info, &format!("File upload started: {}", path));
 
@@ -40,7 +40,12 @@ pub async fn upload_file(
             }
         };
 
-        if let Err(e) = service.process_file(app.clone(), PathBuf::from(path_clone), job_id_clone.clone()).await {
+        if let Err(e) = service.process_file(
+            app.clone(),
+            PathBuf::from(path_clone),
+            job_id_clone.clone(),
+            cancel_rx,
+        ).await {
             error!("Processing failed: {}", e);
             let _ = app.emit("transcription:error", TranscriptionErrorEvent {
                 job_id: job_id_clone,
