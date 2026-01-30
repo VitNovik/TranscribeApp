@@ -2,7 +2,7 @@ name: Build macOS App
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     tags:
       - 'v*'
   pull_request:
@@ -79,7 +79,10 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+
+    permissions:
+      contents: write
 
     steps:
     - name: Download artifacts
@@ -88,12 +91,18 @@ jobs:
         name: TranscribeApp-macos-universal
         path: artifacts
 
+    - name: List downloaded artifacts
+      run: ls -la artifacts/
+
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        files: artifacts/*.dmg
+        files: artifacts/*
         draft: false
-        prerelease: false
+        prerelease: ${{ github.event_name == 'workflow_dispatch' }}
+        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
+        name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Build #{0}', github.run_number) }}
         generate_release_notes: true
+        make_latest: ${{ startsWith(github.ref, 'refs/tags/') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
