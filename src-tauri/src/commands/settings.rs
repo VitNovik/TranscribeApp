@@ -1,6 +1,6 @@
 use crate::app_log;
 use crate::database::repository;
-use crate::models::*;
+use crate::models::{Settings, WhisperModel};
 use crate::services::WhisperService;
 
 #[tauri::command]

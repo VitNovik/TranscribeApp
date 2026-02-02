@@ -5,7 +5,12 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use tracing::{debug, info, error};
 
-use crate::models::*;
+use crate::models::{
+    Transcription, TranscriptionSummary, NewTranscription,
+    Segment, NewSegment, Speaker, NewSpeaker,
+    LogEntry, LogLevel,
+    Settings, WhisperModel,
+};
 use super::schema::{initialize_database, cleanup_old_logs};
 
 const MAX_LOG_ENTRIES: i64 = 1000;

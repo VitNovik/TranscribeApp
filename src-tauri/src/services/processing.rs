@@ -10,7 +10,10 @@ use crate::app_log;
 use crate::database::repository::{
     insert_transcription, insert_speaker, insert_segment, get_settings,
 };
-use crate::models::*;
+use crate::models::{
+    JobStatus, NewTranscription, ProcessingStage, ProgressEvent,
+    TranscriptionCompleteEvent,
+};
 use crate::services::{FFmpegService, WhisperService, DiarizationService};
 
 /// Active processing jobs

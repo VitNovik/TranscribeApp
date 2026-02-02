@@ -39,9 +39,9 @@ impl WhisperService {
 
         models
             .iter()
-            .filter(|m| self.is_model_available(m))
-            .map(|m| m.as_str().to_string())
-            .collect()
+            .filter(|m: &&WhisperModel| self.is_model_available(m))
+            .map(|m: &WhisperModel| m.as_str().to_string())
+            .collect::<Vec<String>>()
     }
 
     /// Download model from Hugging Face

@@ -8,11 +8,12 @@ dist-ssr/
 # Tauri
 src-tauri/target/
 src-tauri/WixTools/
-src-tauri/icons/*.ico
-src-tauri/icons/*.icns
+# Generated icons (keep source icons in repo)
+# src-tauri/icons/*.ico
+# src-tauri/icons/*.icns
 
 # Models (large files)
-models/
+/models/
 *.ggml
 *.bin
 *.pt

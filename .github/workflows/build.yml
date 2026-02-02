@@ -52,6 +52,12 @@ jobs:
     - name: Build frontend
       run: npm run build
 
+    - name: Rust check (aarch64)
+      run: cd src-tauri && cargo check --target aarch64-apple-darwin 2>&1 | head -200
+
+    - name: Rust check (x86_64)
+      run: cd src-tauri && cargo check --target x86_64-apple-darwin 2>&1 | head -200
+
     - name: Build Tauri app (Universal Binary)
       run: npm run tauri build -- --target universal-apple-darwin
       env:

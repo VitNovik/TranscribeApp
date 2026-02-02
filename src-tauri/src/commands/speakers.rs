@@ -1,6 +1,6 @@
 use crate::app_log;
 use crate::database::repository;
-use crate::models::*;
+use crate::models::{Speaker, Segment};
 
 #[tauri::command]
 pub async fn get_speakers(transcription_id: i64) -> Result<Vec<Speaker>, String> {

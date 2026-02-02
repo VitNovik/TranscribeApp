@@ -4,7 +4,10 @@ use tracing::error;
 
 use crate::app_log;
 use crate::database::repository;
-use crate::models::*;
+use crate::models::{
+    TranscriptionJob, JobStatus, TranscriptionErrorEvent,
+    Transcription, TranscriptionSummary, Segment, Speaker,
+};
 use crate::services::processing::{ProcessingService, generate_job_id, create_job};
 
 #[tauri::command]

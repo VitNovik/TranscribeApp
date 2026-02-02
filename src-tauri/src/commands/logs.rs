@@ -2,7 +2,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri::AppHandle;
 
 use crate::database::repository;
-use crate::models::*;
+use crate::models::LogEntry;
 
 #[tauri::command]
 pub async fn get_logs(
