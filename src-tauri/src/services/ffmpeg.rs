@@ -4,6 +4,7 @@ use std::process::Command;
 
 use crate::app_log;
 use crate::database::get_app_data_dir;
+use crate::utils::path_to_str;
 
 pub struct FFmpegService;
 
@@ -19,20 +20,32 @@ impl FFmpegService {
 
         let output_filename = format!("{}.wav", uuid::Uuid::new_v4());
         let output_path = temp_dir.join(&output_filename);
+        let input_str = path_to_str(input_path, "Input file")?;
+        let output_str = path_to_str(&output_path, "Output file")?;
 
-        app_log!(info, &format!("FFmpeg: extracting audio from {:?}", input_path));
+        app_log!(
+            info,
+            &format!("FFmpeg: extracting audio from {:?}", input_path)
+        );
 
         let ffmpeg_args = [
-            "-i", input_path.to_str().unwrap(),
-            "-vn",                    // No video
-            "-acodec", "pcm_s16le",   // 16-bit PCM
-            "-ar", "16000",           // 16kHz sample rate (required by Whisper)
-            "-ac", "1",               // Mono
-            "-y",                     // Overwrite output
-            output_path.to_str().unwrap(),
+            "-i",
+            input_str,
+            "-vn", // No video
+            "-acodec",
+            "pcm_s16le", // 16-bit PCM
+            "-ar",
+            "16000", // 16kHz sample rate (required by Whisper)
+            "-ac",
+            "1",  // Mono
+            "-y", // Overwrite output
+            output_str,
         ];
 
-        app_log!(debug, &format!("FFmpeg command: ffmpeg {}", ffmpeg_args.join(" ")));
+        app_log!(
+            debug,
+            &format!("FFmpeg command: ffmpeg {}", ffmpeg_args.join(" "))
+        );
 
         let output = Command::new("ffmpeg")
             .args(&ffmpeg_args)
@@ -51,12 +64,16 @@ impl FFmpegService {
 
     /// Get duration of media file in seconds
     pub fn get_duration(&self, file_path: &Path) -> Result<f64> {
+        let file_str = path_to_str(file_path, "Media file")?;
         let output = Command::new("ffprobe")
             .args([
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                file_path.to_str().unwrap(),
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                file_str,
             ])
             .output()
             .context("Failed to execute FFprobe")?;
@@ -67,10 +84,15 @@ impl FFmpegService {
         }
 
         let duration_str = String::from_utf8_lossy(&output.stdout);
-        let duration: f64 = duration_str.trim().parse()
+        let duration: f64 = duration_str
+            .trim()
+            .parse()
             .context("Failed to parse duration")?;
 
-        app_log!(debug, &format!("FFprobe: media duration = {:.1}s", duration));
+        app_log!(
+            debug,
+            &format!("FFprobe: media duration = {:.1}s", duration)
+        );
         Ok(duration)
     }
 

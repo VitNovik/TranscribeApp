@@ -148,6 +148,17 @@ npm run lint
 npm run tauri:build
 ```
 
+### Примечание для Linux окружений
+
+Если вы запускаете `cargo check` или `npm run tauri:build` в Linux (например, в CI контейнере),
+нужно установить системные зависимости для `glib` и `pkg-config`.
+Пример для Debian/Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libglib2.0-dev pkg-config
+```
+
 ## Известные ограничения
 
 - Диаризация требует Hugging Face токен и интернет-соединение для первичной загрузки модели
