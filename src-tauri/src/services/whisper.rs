@@ -4,7 +4,8 @@ use std::process::Command;
 
 use crate::app_log;
 use crate::database::get_app_data_dir;
-use crate::models::{WhisperModel, NewSegment};
+use crate::models::{NewSegment, WhisperModel};
+use crate::utils::path_to_str;
 
 pub struct WhisperService {
     models_dir: PathBuf,
@@ -51,14 +52,19 @@ impl WhisperService {
             model.model_file()
         );
         let model_path = self.model_path(model);
+        let model_path_str = path_to_str(&model_path, "Model file")?;
 
-        app_log!(info, &format!("Downloading model {} from {}", model.as_str(), model_url));
+        app_log!(
+            info,
+            &format!("Downloading model {} from {}", model.as_str(), model_url)
+        );
 
         // Use curl to download (available on macOS by default)
         let output = Command::new("curl")
             .args([
-                "-L",  // Follow redirects
-                "-o", model_path.to_str().unwrap(),
+                "-L", // Follow redirects
+                "-o",
+                model_path_str,
                 "--progress-bar",
                 &model_url,
             ])
@@ -70,7 +76,10 @@ impl WhisperService {
             anyhow::bail!("Failed to download model: {}", stderr);
         }
 
-        app_log!(info, &format!("Model {} downloaded successfully", model.as_str()));
+        app_log!(
+            info,
+            &format!("Model {} downloaded successfully", model.as_str())
+        );
         Ok(())
     }
 
@@ -82,7 +91,14 @@ impl WhisperService {
         model: &WhisperModel,
         language: &str,
     ) -> Result<TranscriptionResult> {
-        app_log!(info, &format!("Whisper: starting transcription with model {} for language {}", model.as_str(), language));
+        app_log!(
+            info,
+            &format!(
+                "Whisper: starting transcription with model {} for language {}",
+                model.as_str(),
+                language
+            )
+        );
 
         // For MVP, we'll simulate transcription result
         // In production, this would call whisper.cpp or whisper Python
@@ -98,7 +114,10 @@ impl WhisperService {
         }
 
         // If no whisper available, return a placeholder result for testing
-        app_log!(warn, "No Whisper implementation found, returning placeholder result");
+        app_log!(
+            warn,
+            "No Whisper implementation found, returning placeholder result"
+        );
         Ok(TranscriptionResult {
             text: "[Транскрибация недоступна - установите whisper.cpp или whisper Python]".to_string(),
             segments: vec![NewSegment {
@@ -119,6 +138,8 @@ impl WhisperService {
         language: &str,
     ) -> Result<TranscriptionResult> {
         let model_path = self.model_path(model);
+        let model_path_str = path_to_str(&model_path, "Model file")?;
+        let audio_path_str = path_to_str(audio_path, "Audio file")?;
 
         if !model_path.exists() {
             anyhow::bail!("Model file not found: {:?}", model_path);
@@ -129,11 +150,14 @@ impl WhisperService {
 
         let output = Command::new(&whisper_cmd)
             .args([
-                "-m", model_path.to_str().unwrap(),
-                "-l", language,
-                "-f", audio_path.to_str().unwrap(),
-                "-otxt",  // Output as text
-                "-osrt",  // Also output SRT for timestamps
+                "-m",
+                model_path_str,
+                "-l",
+                language,
+                "-f",
+                audio_path_str,
+                "-otxt", // Output as text
+                "-osrt", // Also output SRT for timestamps
             ])
             .output()
             .context("Failed to execute whisper.cpp")?;
@@ -173,7 +197,8 @@ impl WhisperService {
         language: &str,
     ) -> Result<TranscriptionResult> {
         // Create a Python script for transcription
-        let script = format!(r#"
+        let script = format!(
+            r#"
 import whisper
 import json
 import sys
@@ -195,7 +220,12 @@ output = {{
 }}
 
 print(json.dumps(output))
-"#, model.as_str(), audio_path.display(), language, language);
+"#,
+            model.as_str(),
+            audio_path.display(),
+            language,
+            language
+        );
 
         let output = Command::new("python3")
             .args(["-c", &script])
@@ -207,8 +237,8 @@ print(json.dumps(output))
             anyhow::bail!("Python whisper failed: {}", stderr);
         }
 
-        let result: serde_json::Value = serde_json::from_slice(&output.stdout)
-            .context("Failed to parse whisper output")?;
+        let result: serde_json::Value =
+            serde_json::from_slice(&output.stdout).context("Failed to parse whisper output")?;
 
         let text = result["text"].as_str().unwrap_or("").to_string();
         let segments = result["segments"]

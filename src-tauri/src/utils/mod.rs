@@ -1,11 +1,19 @@
 use std::path::Path;
 
+use anyhow::{Context, Result};
+
 /// Get file name without extension
 pub fn get_file_stem(path: &Path) -> String {
     path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("Untitled")
         .to_string()
+}
+
+/// Convert a path to a UTF-8 string with a helpful error message.
+pub fn path_to_str<'a>(path: &'a Path, label: &str) -> Result<&'a str> {
+    path.to_str()
+        .context(format!("{label} path is not valid UTF-8: {path:?}"))
 }
 
 /// Format duration in HH:MM:SS
